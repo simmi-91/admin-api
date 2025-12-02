@@ -1,6 +1,8 @@
 import express from "express";
 import dbPool from "../database.js";
 
+import { requireAuth, verifyAdmin } from "../middleware/authMiddleware.js";
+
 const router = express.Router();
 
 export let wishlistItems = [];
@@ -9,7 +11,7 @@ export const resetWishlist = () => {
   wishlistItems = [];
 };
 
-router.get("/", async (req, res) => {
+router.get("/", requireAuth, async (req, res) => {
   try {
     const [rows] = await dbPool.query(
       "SELECT * FROM wishlist ORDER BY createdAt DESC"
@@ -24,7 +26,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requireAuth, verifyAdmin, async (req, res) => {
   const { title, description, category, active } = req.body;
 
   if (!title) {
@@ -74,9 +76,7 @@ router.post("/", async (req, res) => {
     if (error.code === "ER_DUP_ENTRY") {
       console.warn(`Attempted to insert duplicate title: "${itemTitle}"`);
       return res.status(409).json({
-        // 409 Conflict, uniqueness violations
         error: "A wishlist item with this title already exists.",
-        details: { field: "title" },
       });
     }
 
@@ -88,7 +88,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireAuth, verifyAdmin, async (req, res) => {
   const { id } = req.params;
   const { title, description, category, active } = req.body;
 
@@ -142,7 +142,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAuth, verifyAdmin, async (req, res) => {
   const { id } = req.params;
 
   try {
