@@ -5,12 +5,6 @@ import { requireAuth, verifyAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-export let wishlistItems = [];
-
-export const resetWishlist = () => {
-  wishlistItems = [];
-};
-
 router.get("/", requireAuth, async (req, res) => {
   try {
     const [rows] = await dbPool.query(

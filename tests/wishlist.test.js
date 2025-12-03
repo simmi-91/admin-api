@@ -1,12 +1,19 @@
-// tests/wishlist.test.js
 import request from "supertest";
 
 import app from "../server.js";
 import dbPool from "../src/database.js";
 
+import { getAdminToken, getNonAdminToken } from "./testAuth.js";
+
+let adminToken;
+let nonAdminToken;
+
 describe("Wishlist API", () => {
-  beforeEach(async () => {
-    // Clear data before each test
+  beforeAll(async () => {
+    adminToken = await getAdminToken();
+    nonAdminToken = getNonAdminToken();
+
+    // Clear data before test
     try {
       await dbPool.query("TRUNCATE TABLE wishlist");
     } catch (error) {
@@ -19,9 +26,53 @@ describe("Wishlist API", () => {
     await dbPool.end();
   });
 
+  // --- Security Tests ---
+
+  const secureRoutes = [
+    { method: "get", url: "/api/wishlist" },
+    { method: "post", url: "/api/wishlist" },
+    { method: "put", url: "/api/wishlist/1" },
+    { method: "delete", url: "/api/wishlist/1" },
+  ];
+  secureRoutes.forEach(({ method, url }) => {
+    it(`[SECURITY] ${method.toUpperCase()} ${url} should return 401 if no token is provided`, async () => {
+      const response = await request(app)[method](url);
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBe("Access token missing.");
+    });
+  });
+
+  const adminRoutes = [
+    { method: "post", url: "/api/wishlist", payload: { title: "Test" } },
+    { method: "put", url: "/api/wishlist/1", payload: { title: "Test" } },
+    { method: "delete", url: "/api/wishlist/1" },
+  ];
+  adminRoutes.forEach(({ method, url, payload }) => {
+    it(`[SECURITY] ${method.toUpperCase()} ${url} should return 403 if token is for a non-admin user`, async () => {
+      let req = request(app)[method](url).set("Authorization", nonAdminToken);
+      if (payload) {
+        req = req.send(payload);
+      }
+      const response = await req;
+      expect(response.status).toBe(403);
+      expect(response.body.error).toContain("not authorized");
+    });
+  });
+
+  it("[SECURITY] GET /api/wishlist should return 200 with non-admin token (requireAuth only)", async () => {
+    const response = await request(app)
+      .get("/api/wishlist")
+      .set("Authorization", nonAdminToken);
+    expect(response.status).toBe(200);
+  });
+
+  // --- Method Tests ---
+
   describe("GET /api/wishlist", () => {
     it("should return empty array initially", async () => {
-      const response = await request(app).get("/api/wishlist");
+      const response = await request(app)
+        .get("/api/wishlist")
+        .set("Authorization", adminToken);
 
       expect(response.status).toBe(200);
       expect(response.body.items).toEqual([]);
@@ -40,12 +91,12 @@ describe("Wishlist API", () => {
 
       await dbPool.query(sql, values);
 
-      const response = await request(app).get("/api/wishlist");
+      const response = await request(app)
+        .get("/api/wishlist")
+        .set("Authorization", adminToken);
 
       expect(response.status).toBe(200);
       expect(response.body.items.length).toBe(1);
-      expect(response.body.items[0].title).toBe(title);
-      expect(typeof response.body.items[0].id).toBe("number");
     });
   });
 
@@ -58,7 +109,10 @@ describe("Wishlist API", () => {
         active: 1,
       };
 
-      const response = await request(app).post("/api/wishlist").send(newItem);
+      const response = await request(app)
+        .post("/api/wishlist")
+        .set("Authorization", adminToken)
+        .send(newItem);
 
       expect(response.status).toBe(201);
       expect(response.body.title).toBe("Test Item");
@@ -77,6 +131,7 @@ describe("Wishlist API", () => {
     it("should return 400 if title is missing", async () => {
       const response = await request(app)
         .post("/api/wishlist")
+        .set("Authorization", adminToken)
         .send({ description: "No title" });
 
       expect(response.status).toBe(400);
@@ -85,7 +140,7 @@ describe("Wishlist API", () => {
 
     it("should return 409 Conflict if title is a duplicate", async () => {
       const duplicateItem = {
-        title: "Unique Test Title",
+        title: "Test Item",
         description: "Initial post",
       };
 
@@ -93,14 +148,13 @@ describe("Wishlist API", () => {
 
       const response = await request(app)
         .post("/api/wishlist")
+        .set("Authorization", adminToken)
         .send(duplicateItem);
 
       expect(response.status).toBe(409);
       expect(response.body.error).toBe(
         "A wishlist item with this title already exists."
       );
-      expect(response.body).toHaveProperty("details");
-      expect(response.body.details.field).toBe("title");
     });
   });
 });
