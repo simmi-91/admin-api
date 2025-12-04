@@ -1,0 +1,78 @@
+name: Deploy Admin Server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy server files
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "server.js,package.json,package-lock.json,src/"
+          target: "/tmp/admin-deploy-server"
+          rm: true # Clean target directory first
+          strip_components: 0 # Behold mappestruktur
+
+      - name: Execute deployment script on server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            # Navigate to deployment location
+            cd /var/www/admin/
+
+            # Remove old backup if exists
+            if [ -d "server_old" ]; then
+              sudo rm -rf server_old
+              echo "Removed server_old"
+            fi
+
+            # Rename current to old (if exists)
+            if [ -d "server" ]; then
+              sudo mv server server_old
+              echo "Renamed server to server_old"
+            fi
+
+            # Move new server files from temp location
+            sudo mv /tmp/admin-deploy-server server
+
+            # Navigate into the new server directory
+            cd server
+
+            # Install dependencies
+            sudo npm ci --production
+
+            # copy env file 
+            if [ -f "/home/${{ secrets.DEPLOY_RUN_AS_USER }}/env/env_admin" ]; then
+              echo "Found env_admin, copying..."
+              sudo cp /home/${{ secrets.DEPLOY_RUN_AS_USER }}/env/env_admin .env
+              echo "Checking if .env was created..."
+              ls -la .env
+            else
+              echo "ERROR: env_admin not found!"
+              exit 1
+            fi
+
+            # Set proper permissions
+            sudo chown -R www-data:www-data /var/www/admin/server
+            sudo chmod -R 755 /var/www/admin/server
+
+            # Restart server
+            USER=${{ secrets.DEPLOY_RUN_AS_USER }}
+            sudo -u $USER pm2 restart admin || sudo -u $USER pm2 start server.js --name admin 
+
+            echo "Server deployment complete!"
+            sudo -u $USER pm2 status
