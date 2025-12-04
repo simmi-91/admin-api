@@ -53,23 +53,16 @@ jobs:
             # Navigate into the new server directory
             cd server
 
+            # create env file 
+            echo "${{ secrets.ENV_FILE_CONTENT }}" > .env 
+
             # Install dependencies
-            sudo npm ci --production
+            pnpm ci --production
 
             # Set proper permissions
             sudo chown -R www-data:www-data /var/www/admin/server
             sudo chmod -R 755 /var/www/admin/server
 
-            # copy env file 
-            if [ -f "/home/${{ secrets.DEPLOY_RUN_AS_USER }}/env/env_admin" ]; then
-              echo "Found env_admin, copying..."
-              sudo cp /home/${{ secrets.DEPLOY_RUN_AS_USER }}/env/env_admin /tmp/admin-deploy-server/.env
-              echo "Checking if .env was created..."
-              ls -la .env
-            else
-              echo "ERROR: env_admin not found!"
-              exit 1
-            fi
 
             # Restart server
             USER=${{ secrets.DEPLOY_RUN_AS_USER }}
