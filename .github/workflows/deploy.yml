@@ -2,7 +2,9 @@ name: Deploy Admin Server
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - github-actions
   workflow_dispatch: # Allows manual trigger from GitHub UI
 
 jobs:
