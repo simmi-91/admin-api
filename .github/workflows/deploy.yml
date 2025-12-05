@@ -57,7 +57,7 @@ jobs:
             echo "${{ secrets.ENV_FILE_CONTENT }}" > .env 
 
             # Install dependencies
-            npm install --omit=dev
+            sudo npm install --omit=dev
 
             # Set proper permissions
             sudo chown -R www-data:www-data /var/www/admin/server
